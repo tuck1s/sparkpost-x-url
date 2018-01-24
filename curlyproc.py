@@ -2,7 +2,7 @@
 # Process message body, applying preprocessor {{ }} transformations to the html / text
 #
 from enum import Enum, auto
-import time, sys, pprint
+import time, sys, json
 from requests import request
 #
 # Preprocessor transform request
@@ -155,18 +155,58 @@ def transformReq(s):
 # Helper functions for the token parser
 # -----------------------------------------------------------------------------------------
 #
+# From https://developers.sparkpost.com/api/substitutions-reference.html
+# Substitution keys can be composed of any string of US-ASCII letters, digits, and underscores, not beginning with a digit, with the exception of the following keywords:
+#
+def isValidJSONName(v):
+    # check against list of unsupported sub key names
+    if v in ['and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function', 'if', 'in', 'local', 'nil', 'not', 'or', 'each', 'repeat', 'return', 'then', 'true', 'until', 'while']:
+        print('External requests don\'t support', sOut, ' keyword.  See https://developers.sparkpost.com/api/substitutions-reference.html')
+        return False
+    else:
+        return v.isidentifier()                                 # use Python's definition
+
 # JSON-format variable references are supported as per https://developers.sparkpost.com/api/substitutions-reference.html, i.e.
 #
 #   var
 #   var.var
-#   var[idx].var
+#   var[idx]
+#   var[idx].var            and nestings thereof
 #
 # JSON arrays are zero-based so 0<= idx < len
 # If value not found, return None
 #
 def accessSubData(sub, v):
-    pass
-    return None
+    if isValidJSONName(v) and v in sub:
+        return sub[v]
+    else:
+        i = 0
+        while i<len(v):
+            if v[i] == '.':
+                # found a structure separator
+                a = v[0:i]                      # part up to, but not including the dot
+                rhs = v[i+1:]                   # trailing part after the dot
+                if isValidJSONName(a) and a in sub:
+                    return accessSubData(sub[a], rhs)       # follow the reference down
+            elif v[i] == '[':
+                # found an array index
+                a = v[0:i]                      # leading part up to, but not including the [
+                b = v[i+1:]                     # trailing part
+                idx, closebr, rhs = b.partition(']')
+                if closebr != ']':
+                    print('Invalid array index in ', v)
+                    return None
+                if not idx.isnumeric():
+                    idx = accessSubData(sub, idx)           # variable index
+                if rhs[0] == '.':
+                    rhs = rhs[1:]                           # Looking good - we need to strip the dot
+                    return accessSubData(sub[a][int(idx)], rhs)  # dereference the name and the index
+                else:
+                    print('Array index must be followed by a JSON name')
+                    return None
+            else:
+                i += 1
+        return None
 #
 # Found a regular Handlebars token inside a preprocessor token. We attempt to resolve the Handlebars expression using the
 # provided substitution_data (per recipient and global).
@@ -183,35 +223,31 @@ def accessSubData(sub, v):
 #
 def preProcessorGetHbars(tokens, i, substitution_data):
     assert tokens[i]['tok'] == Tok.HBARS_START
-    sOut = tokens[i]['str'].lstrip('{')             # Get the first keyword, which will be variable ref
-    # check against list of unsupported sub key names
-    if sOut in ['and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function', 'if', 'in', 'local', 'nil', 'not', 'or', 'each', 'repeat', 'return', 'then', 'true', 'until', 'while']:
-        print('External requests don\'t support', sOut, ' keyword.  See https://developers.sparkpost.com/api/substitutions-reference.html')
-        SOut = ''
-    else:
-        i += 1
-        while True:
-            t = tokens[i]['tok'];
-            if t == Tok.STRING:
-                sOut += t['str']
-                i += 1
-            elif t == Tok.WHITESPACE:
-                i += 1                              # Whitespace silently absorbed within hbars
-            elif t == Tok.HBARS_END:
-                i += 1
-                break                               # outer level doesn't need to see this token - return what we've got so far
-            elif t == Tok.PREPROCESSOR_START:
-                s, i = preProcessor(tokens, i)      # Allow preproc req within a hbars req .. why not
-                sOut += s
-            elif t == Tok.HBARS_START:
-                s, i = preProcessorGetHbars(tokens, i) # Allow hbars req within a hbars req .. why not
-                sOut += s
-            else:
-                print('Unexpected token: ', t['tok'], '=', t['str'], 'inside preprocessor clause')
-                return None
-        # Got the accumulated hbars content in sOut.  Look up in our sub variables
-        # First precedence is per-recipient, then global
-        sOut = accessSubData(substitution_data, sOut)
+    s = tokens[i]['str'].lstrip('{')             # Get the first keyword
+    i += 1
+    while True:
+        t = tokens[i]['tok'];
+        if t == Tok.STRING:
+            s += t['str']
+            i += 1
+        elif t == Tok.WHITESPACE:
+            i += 1                                  # Whitespace silently absorbed within hbars
+        elif t == Tok.HBARS_END:
+            i += 1
+            break                                   # outer level doesn't need to see this token - return what we've got so far
+        elif t == Tok.PREPROCESSOR_START:
+            s, i = preProcessor(tokens, i)          # Allow preproc req within a hbars req .. why not
+            s += s
+        elif t == Tok.HBARS_START:
+            s, i = preProcessorGetHbars(tokens, i) # Allow hbars req within a hbars req .. why not
+            s += s
+        else:
+            print('Unexpected token: ', t['tok'], '=', t['str'], 'inside preprocessor clause')
+            return None
+    # Got the accumulated hbars content in s.  Look up in our sub variables.  Precedence is per-recipient, then global
+    sOut = accessSubData(substitution_data['recipient'], s)
+    if sOut == None:
+        sOut = accessSubData(substitution_data['global'], s)
         if sOut == None:
             print('Error: variable', sOut, 'not found')
             SOut = ''
@@ -260,15 +296,13 @@ def preProcessor(tokens, i, substitution_data):
         if method == 'get':
             # Got url in r[1]
             response = request(method, r[1])
+            print('Preprocess request URL', req, 'returned status code', response.status_code, len(response.text), 'bytes content')
             if response.status_code == 200:
                 sOut = response.text
-            else:
-                print('Preprocess request URL', req, 'returned status code', response.status_code, response.text)
         else:
             print('Unsupported method', method, 'in preprocessor request:', req)
     else:
         print('Unexpected info in preprocessor request: ', req, tokens[i]['str'])
-
     return sOut, i                                                      # And we're done
 
 # -----------------------------------------------------------------------------------------
@@ -299,9 +333,27 @@ with open(infile, 'r') as f:
         'global': {
             'subject': 'Avocados for all',
             'batch_id': 'SPARKPOST_TEST',
-            'auth_token': 'LuXBxonPIvZGkDz0qTeB6PIOqIyxq8Va'
+            'auth_token': 'LuXBxonPIvZGkDz0qTeB6PIOqIyxq8Va',
+            'abc': {
+                'def': 'ghi'
+            },
+            'jkl': [
+                'mno',
+                'pqr'
+            ],
         }
     }
+
+
+#    t = accessSubData(substitution_data['global'], 'abc.def')
+#    s2 = json.loads("""{"employees":[
+#    { "firstName":"John", "lastName":"Doe" },
+#    { "firstName":"Anna", "lastName":"Smith" },
+#    { "firstName":"Peter", "lastName":"Jones" }
+#    ]}"""
+#    )
+#    t = accessSubData(s2, 'employees[2].firstName')
+
     with open('test-out.html', 'w') as outfile:
         i = 0                                       # Can't use for, as preprocessor needs to advance index inside loop
         while i < len(tokens):

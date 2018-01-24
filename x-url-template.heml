@@ -38,7 +38,7 @@
 			</row>
 			<h1>{{subject}}</h1>
 			<br>
-			<p>{{x-url get http://inbox.onespot.com/recommend?TEST&RECOMMENDATION_UNIT_ID=65&AUTH_TOKEN={{auth_token}}&CONTENT_URLS=http%3A%2F%2Fblog.myfitnesspal.com&BATCH_ID={{batch_id}}&MESSAGE_ID={{message_id}}&EMAIL_HASH={{email_hash}}&TEST=true&NOCACHE=true}}
+			<p>{{x-url get http://inbox.onespot.com/recommend?TEST&RECOMMENDATION_UNIT_ID=65&AUTH_TOKEN={{auth_token}}&CONTENT_URLS=http://blog.myfitnesspal.com&BATCH_ID={{batch_id}}&MESSAGE_ID={{message_id}}&EMAIL_HASH={{email_hash}}&TEST=true&NOCACHE=true}}
 			</p>
 			<br>
 			<p>{{x-url get http://inbox.onespot.com/recommend?TEST&RECOMMENDATION_UNIT_ID=6205&AUTH_TOKEN={{auth_token}}&CONTENT_URLS=http://blog.myfitnesspal.com/5-pose-yoga-fix-stronger-arms&BATCH_ID={{batch_id}}&MESSAGE_ID={{message_id}}&EMAIL_HASH={{email_hash}}&TEST=true&NOCACHE=true}}
