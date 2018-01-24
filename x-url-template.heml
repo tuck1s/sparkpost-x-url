@@ -1,0 +1,67 @@
+<heml>
+	<head>
+		<subject>{{subject}}</subject>
+		<style>
+			body { background: white; font-family: Georgia, Times, serif; }
+			h1 { color: green; text-align: center; font-size: 32px; font-weight: bold; font-family: Georgia, Times, serif; }
+			h2 { color: green; text-align: center; font-size: 24px; font-weight: bold; font-family: Arial, sans-serif; }
+			a {color:green; text-decoration: none; }
+			a.footer {color:white; text-decoration: none }
+			img { display:inline; }
+			p {text-align: center; }
+			container {
+				max-width: 800px;
+			} 
+			container#footer {
+				background-color: green;
+			}
+			p.footer {text-align: center; font-size: 12px; font-family: Arial, sans-serif; color: white; }
+		</style>
+	</head>
+	<body>
+		<container>
+			<row>
+				<column>
+					<p>
+						<a href="#"><img src="https://sparkpost.github.io/template-library/templates/assets/avocado-logo-sml.png" alt=""></a>
+					</p>
+				</column>
+				<column>
+					<p>
+						<a href="#"><img inline src="https://sparkpost.github.io/template-library/templates/assets/twitter.png" alt=""></a>
+						<a href="#"><img inline src="https://sparkpost.github.io/template-library/templates/assets/facebook.png" alt=""></a>
+						<a href="#"><img inline src="https://sparkpost.github.io/template-library/templates/assets/instagram.png" alt=""></a>
+						<a href="#"><img inline src="https://sparkpost.github.io/template-library/templates/assets/gplus.png" alt=""></a>
+						<a href="#"><img inline src="https://sparkpost.github.io/template-library/templates/assets/github.png" alt=""></a>
+					</p>
+				</column>
+			</row>
+			<h1>{{subject}}</h1>
+			<br>
+			<p>{{x-url get http://inbox.onespot.com/recommend?TEST&RECOMMENDATION_UNIT_ID=65&AUTH_TOKEN={{auth_token}}&CONTENT_URLS=http%3A%2F%2Fblog.myfitnesspal.com&BATCH_ID={{batch_id}}&MESSAGE_ID={{message_id}}&EMAIL_HASH={{email_hash}}&TEST=true&NOCACHE=true}}
+			</p>
+			<br>
+			<p>{{x-url get http://inbox.onespot.com/recommend?TEST&RECOMMENDATION_UNIT_ID=6205&AUTH_TOKEN={{auth_token}}&CONTENT_URLS=http://blog.myfitnesspal.com/5-pose-yoga-fix-stronger-arms&BATCH_ID={{batch_id}}&MESSAGE_ID={{message_id}}&EMAIL_HASH={{email_hash}}&TEST=true&NOCACHE=true}}
+
+			</p>
+			<row>
+				<column><button>Find out more</button></column>
+			</row>
+			<br>
+		</container>
+		<br>
+		<container id="footer">
+			<row>
+				<column>
+					<p class="footer"><a class="footer" href="#">Privacy Policy</a></p>
+				</column>
+				<column>
+					<p class="footer"><a class="footer" href="#">Update email</a></p>
+				</column>
+				<column>
+					<p class="footer"><a class="footer" href="#">Unsubscribe</a></p>
+				</column>
+			</row>
+		</container>
+	</body>
+</heml>

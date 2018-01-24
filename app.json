@@ -1,0 +1,16 @@
+{
+  "name": "SparkPost smart proxy",
+  "description": "Barebones Python microservice using Flask and Gunicorn on Heroku.",
+  "image": "heroku/python",
+  "repository": "https://github.com/tuck1s/hello-python-heroku.git",
+  "logo": "https://github.com/tuck1s/hello-python-heroku/blob/master/SparkPost_App-Icon_180x180.png",
+  "website": "https://developers.sparkpost.com",
+  "keywords": ["python", "flask", "gunicorn", "SparkPost"],
+  "env": {
+    "SPARKPOST_HOST": {
+      "description": "The URL of the SparkPost API service you're using. Defaults to https://api.sparkpost.com",
+      "value": "https://api.sparkpost.com",
+      "required": false
+    }
+  }
+}
