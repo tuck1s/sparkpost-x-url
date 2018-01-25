@@ -174,6 +174,8 @@ def isValidJSONName(v):
 #   var[idx].var            and nestings thereof
 #
 # JSON arrays are zero-based so 0<= idx < len
+#   idx can be a numeric constant or (more usually) another var
+#
 # If value not found, return None
 #
 def accessSubData(sub, v):
@@ -200,7 +202,8 @@ def accessSubData(sub, v):
                     idx = accessSubData(sub, idx)           # variable index
                 if rhs[0] == '.':
                     rhs = rhs[1:]                           # Looking good - we need to strip the dot
-                    return accessSubData(sub[a][int(idx)], rhs)  # dereference the name and the index
+                    # resolve the LHS name and the index, continue downwards with the RHS
+                    return accessSubData(sub[a][int(idx)], rhs)
                 else:
                     print('Array index must be followed by a JSON name')
                     return None
