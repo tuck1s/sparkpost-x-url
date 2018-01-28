@@ -32,7 +32,8 @@ class Tok(Enum):
 def getToken(s, p, nest):
     tok = None
     sOut = ''
-    assert p < len(s)
+    if not p < len(s):
+        return None, '', p, nest                        # Run out of strings - return error
     # check for special digram and trigrams
     if s[p] == '{':
         sOut += s[p]; p += 1
@@ -96,13 +97,14 @@ def getCurlyExpr(s, p, nest, t):
         return None
 
     preprocWord = 0                                         # state variable, detects start of a preprocessor req
-    while True:
+    while p < len(s):
         t, v, p, nest = getToken(s, p, nest)
 
         if t == Tok.OPEN_2CURLY or t == Tok.OPEN_3CURLY:
             # Handle nested expressions
             subtoks, p, nest = getCurlyExpr(s, p, nest, t)
-            toks.extend(subtoks)
+            if subtoks:
+                toks.extend(subtoks)
 
         elif t == Tok.STRING:
             if preprocWord == 0:
@@ -144,7 +146,10 @@ def transformReq(s):
             tokens.append({'tok': t, 'str': v})
         elif t == Tok.OPEN_2CURLY or t == Tok.OPEN_3CURLY :
             toks, p, nest = getCurlyExpr(s, p, nest, t)
-            tokens.extend(toks)
+            if nest > 0:
+                print('Warning: missing closing handlebars to match', v, toks[0]['str'] )
+            if toks:
+                tokens.extend(toks)
         else:
             print('Unexpected token {:20}'.format(t), '{:60.40}'.format(v.replace('\n','.').replace('\t','.')), len(v), 'bytes')
     return tokens
@@ -199,13 +204,24 @@ def accessSubData(sub, v):
                     print('Invalid array index in ', v)
                     return None
                 if not idx.isnumeric():
-                    idx = accessSubData(sub, idx)           # variable index
-                if rhs[0] == '.':
+                    idx = accessSubData(sub, idx)           # resolve a variable index
+                if len(rhs) > 0 and rhs[0] == '.':
                     rhs = rhs[1:]                           # Looking good - we need to strip the dot
                     # resolve the LHS name and the index, continue downwards with the RHS
-                    return accessSubData(sub[a][int(idx)], rhs)
+                    if a in sub:
+                        idx = int(idx)
+                        if len(sub[a]) > idx:               # we have some data
+                            return accessSubData(sub[a][idx], rhs)
+                        else:
+                            return None                     # silent return, as data may be in another scope
+                    else:
+                        return None
                 else:
-                    print('Array index must be followed by a JSON name')
+                    if a in sub:                            # form var[idx]
+                        idx = int(idx)
+                        if len(sub[a]) > idx:               # we have some data
+                            res = (sub[a][idx])
+                            return res
                     return None
             else:
                 i += 1
@@ -228,8 +244,8 @@ def preProcessorGetHbars(tokens, i, substitution_data):
     assert tokens[i]['tok'] == Tok.HBARS_START
     s = tokens[i]['str'].lstrip('{')             # Get the first keyword
     i += 1
-    while True:
-        t = tokens[i]['tok'];
+    while i < len(tokens):
+        t = tokens[i]['tok']
         if t == Tok.STRING:
             s += t['str']
             i += 1
@@ -308,6 +324,22 @@ def preProcessor(tokens, i, substitution_data):
         print('Unexpected info in preprocessor request: ', req, tokens[i]['str'])
     return sOut, i                                                      # And we're done
 
+#
+# Generate an output string from tokens and substitution_data
+#
+def tokensToString(tokens, substitution_data):
+    sOut = ''
+    i = 0  # Can't use for, as preprocessor needs to advance index inside loop
+    while i < len(tokens):
+        if tokens[i]['tok'] == Tok.PREPROCESSOR_START:
+            # absorb variable number of tokens, returning the final text / html string
+            s, i = preProcessor(tokens, i, substitution_data)
+        else:
+            s = tokens[i]['str']
+        sOut += s
+        i += 1
+    return sOut
+
 # -----------------------------------------------------------------------------------------
 # Main code
 # -----------------------------------------------------------------------------------------
@@ -319,52 +351,60 @@ def preProcessor(tokens, i, substitution_data):
 #a = (transformReq(' special chars !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ {{ hello inside a curly }}'))
 #a = (transformReq('  {{ {{ hello }}  inside a curly }}  '))
 
-debug = False
 t1 = time.time()
 
+# TODO: metadata also allowed in sub-data
+substitution_data = {
+    'recipient': {
+        'name': 'billybob',
+        'message_id': 'SPARKPOST_TEST',
+        'email_hash': '125'
+},
+    'global': {
+        'subject': 'Avocados for all',
+        'batch_id': 'SPARKPOST_TEST',
+        'auth_token': 'LuXBxonPIvZGkDz0qTeB6PIOqIyxq8Va',
+        'abc': {
+            'def': 'ghi'
+        },
+        'jkl': [
+            'mno',
+            'pqr',
+            { 'stu': 'yz' }
+        ],
+    }
+}
+#
+# preprocessor unit tests
+#
+def testPreprocessor(s, substitution_data, compUrl):
+    tokens = transformReq(s)
+    i = 0
+    while i < len(tokens) and tokens[i]['tok'] != Tok.PREPROCESSOR_START:
+        i += 1
+    assert tokens[i]['tok'] == Tok.PREPROCESSOR_START
+    sOut, i = preProcessorGetWord(tokens, i+1, substitution_data)
+    print(compUrl, 'resolves to', sOut)
+    if sOut != compUrl:
+        exit(1)
+#
+# Check JSON variable resolution within x-urls works as expected
+#
+testPreprocessor('Hello World {{x-url get https://fred.com?id={{email_hash}} }}', substitution_data, 'get https://fred.com?id=125')
+testPreprocessor('Hello World {{x-url get https://fred.com?id={{subject}} }}', substitution_data, 'get https://fred.com?id=Avocados for all')
+testPreprocessor('Hello World {{x-url get https://foo.com?id={{jkl[2].stu}} }}', substitution_data, 'get https://foo.com?id=yz')
+testPreprocessor('Hello World {{x-url get http://bar.com?id={{jkl[0]}} }}', substitution_data, 'get http://bar.com?id=mno')
+
+"""
 # Get complex test case from an input file
 infile = sys.argv[1]
 with open(infile, 'r') as f:
-    tokens = transformReq(f.read())
-    # TODO: metadata also allowed in sub-data
-    substitution_data = {
-        'recipient': {
-            'name': 'billybob',
-            'message_id': 'SPARKPOST_TEST',
-            'email_hash': '125'
-    },
-        'global': {
-            'subject': 'Avocados for all',
-            'batch_id': 'SPARKPOST_TEST',
-            'auth_token': 'LuXBxonPIvZGkDz0qTeB6PIOqIyxq8Va',
-            'abc': {
-                'def': 'ghi'
-            },
-            'jkl': [
-                'mno',
-                'pqr'
-            ],
-        }
-    }
-
-
-#    t = accessSubData(substitution_data['global'], 'abc.def')
-#    s2 = json.loads("""{"employees":[
-#    { "firstName":"John", "lastName":"Doe" },
-#    { "firstName":"Anna", "lastName":"Smith" },
-#    { "firstName":"Peter", "lastName":"Jones" }
-#    ]}"""
-#    )
-#    t = accessSubData(s2, 'employees[2].firstName')
-
-    with open('test-out.html', 'w') as outfile:
-        i = 0                                       # Can't use for, as preprocessor needs to advance index inside loop
-        while i < len(tokens):
-            if tokens[i]['tok'] == Tok.PREPROCESSOR_START:
-                sOut, i = preProcessor(tokens, i, substitution_data)   # absorb variable number of tokens, returning the final text / html string
-            else:
-                sOut = tokens[i]['str']
+    tokens = transformReq(f.read())    
+    sOut = tokensToString(tokens, substitution_data)
+    if sOut != None:
+        with open('test-out.html', 'w') as outfile:
             outfile.write(sOut)
-            i += 1
+"""
+
 t2 = time.time() - t1
 print(t2, 'seconds')
